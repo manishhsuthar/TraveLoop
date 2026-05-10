@@ -1,6 +1,8 @@
+from django.contrib.auth import authenticate, get_user_model
 from django.db.models import F, Sum
-from rest_framework import permissions, viewsets
-from rest_framework.decorators import action
+from rest_framework import permissions, status, viewsets
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from .models import Activity, City, PackingItem, StopActivity, Trip, TripNote, TripStop
@@ -95,3 +97,53 @@ class TripNoteViewSet(viewsets.ModelViewSet):
     queryset = TripNote.objects.select_related("trip", "trip_stop").all()
     serializer_class = TripNoteSerializer
     permission_classes = [DefaultPermission]
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def signup_view(request):
+    username = request.data.get("username", "").strip()
+    email = request.data.get("email", "").strip()
+    password = request.data.get("password", "")
+
+    if not username or not password:
+        return Response({"detail": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user_model = get_user_model()
+    if user_model.objects.filter(username=username).exists():
+        return Response({"detail": "username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = user_model.objects.create_user(username=username, email=email, password=password)
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({"token": token.key, "username": user.username}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def login_view(request):
+    username = request.data.get("username", "").strip()
+    password = request.data.get("password", "")
+    user = authenticate(username=username, password=password)
+    if not user:
+        return Response({"detail": "invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({"token": token.key, "username": user.username})
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def logout_view(request):
+    Token.objects.filter(user=request.user).delete()
+    return Response({"detail": "logged out"})
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def public_trip_view(request, trip_id):
+    try:
+        trip = Trip.objects.prefetch_related("stops", "notes", "packing_items").get(id=trip_id, visibility="public")
+    except Trip.DoesNotExist:
+        return Response({"detail": "public trip not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(TripSerializer(trip).data)

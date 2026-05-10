@@ -6,8 +6,41 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+export const setAuthToken = (token) => {
+  if (token) {
+    api.defaults.headers.common.Authorization = `Token ${token}`;
+  } else {
+    delete api.defaults.headers.common.Authorization;
+  }
+};
+
+export const signup = async (payload) => {
+  const { data } = await api.post("/auth/signup/", payload);
+  return data;
+};
+
+export const login = async (payload) => {
+  const { data } = await api.post("/auth/login/", payload);
+  return data;
+};
+
+export const logout = async () => {
+  const { data } = await api.post("/auth/logout/");
+  return data;
+};
+
 export const fetchTrips = async () => {
   const { data } = await api.get("/trips/");
+  return data;
+};
+
+export const createTrip = async (payload) => {
+  const { data } = await api.post("/trips/", payload);
+  return data;
+};
+
+export const fetchPublicTrip = async (tripId) => {
+  const { data } = await api.get(`/public/trips/${tripId}/`);
   return data;
 };
 

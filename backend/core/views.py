@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, DecimalField, Sum
+from django.db.models import Case, Count, DecimalField, IntegerField, Sum, Value, When
 from django.db.models.functions import Coalesce
 from rest_framework import filters, generics, permissions, status, views, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -23,6 +23,7 @@ from .serializers import (
     UserProfileSerializer,
 )
 from .services.ai_service import ItineraryGenerationService
+from .utils import CURRENCY_CODE, format_inr
 
 User = get_user_model()
 
@@ -44,7 +45,13 @@ class RegisterView(generics.CreateAPIView):
 
 # ─── ViewSets ─────────────────────────────────────────────
 class CityViewSet(viewsets.ModelViewSet):
-    queryset = City.objects.all()
+    queryset = City.objects.annotate(
+        india_priority=Case(
+            When(country__iexact="India", then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField(),
+        )
+    ).order_by("india_priority", "name")
     serializer_class = CitySerializer
     permission_classes = [DefaultPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -55,7 +62,13 @@ class CityViewSet(viewsets.ModelViewSet):
 
 
 class ActivityViewSet(viewsets.ModelViewSet):
-    queryset = Activity.objects.select_related("city").all()
+    queryset = Activity.objects.select_related("city").annotate(
+        india_priority=Case(
+            When(city__country__iexact="India", then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField(),
+        )
+    ).order_by("india_priority", "name")
     serializer_class = ActivitySerializer
     permission_classes = [DefaultPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -118,17 +131,26 @@ class TripViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "trip": {"id": trip.id, "name": trip.name},
+                "currency": CURRENCY_CODE,
                 "budget_limit": budget_limit,
+                "budget_limit_formatted": format_inr(budget_limit),
                 "estimated_total": total,
+                "estimated_total_formatted": format_inr(total),
                 "total_activities_cost": total,
+                "total_activities_cost_formatted": format_inr(total),
                 "total_trip_days": days,
                 "average_per_day": round(total / days, 2),
+                "average_per_day_formatted": format_inr(total / days),
                 "is_over_budget": total > budget_limit,
                 "overbudget_amount": round(overbudget_amount, 2),
+                "overbudget_amount_formatted": format_inr(overbudget_amount),
                 "overbudget_percentage": round((overbudget_amount / budget_limit) * 100, 2)
                 if budget_limit
                 else 0,
                 "category_breakdown": category_breakdown,
+                "category_breakdown_formatted": {
+                    category: format_inr(amount) for category, amount in category_breakdown.items()
+                },
             }
         )
 
@@ -205,10 +227,10 @@ class AIItineraryGenerateView(views.APIView):
             OpenApiExample(
                 "Generate itinerary",
                 value={
-                    "destination": "Japan: Tokyo, Kyoto",
-                    "budget": "1800.00",
+                    "destination": "Goa",
+                    "budget": "25000.00",
                     "number_of_days": 5,
-                    "interests": ["food", "culture", "sightseeing"],
+                    "interests": ["beach", "food", "culture"],
                 },
                 request_only=True,
             )
@@ -258,8 +280,10 @@ class AnalyticsOverviewView(views.APIView):
 
         return Response(
             {
+                "currency": CURRENCY_CODE,
                 "total_trips": trips.count(),
                 "total_estimated_spending": float(activity_costs),
+                "total_estimated_spending_formatted": format_inr(activity_costs),
                 "most_visited_cities": most_visited_cities,
                 "activity_category_distribution": activity_distribution,
                 "average_trip_duration": round(sum(trip_durations) / len(trip_durations), 2)

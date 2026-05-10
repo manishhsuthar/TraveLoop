@@ -12,6 +12,7 @@ from .models import (
     TripStop,
     UserProfile,
 )
+from .utils import CURRENCY_CODE, format_inr
 
 User = get_user_model()
 
@@ -24,15 +25,25 @@ class CitySerializer(serializers.ModelSerializer):
 
 class ActivitySerializer(serializers.ModelSerializer):
     city_name = serializers.CharField(source="city.name", read_only=True)
+    currency = serializers.SerializerMethodField()
+    estimated_cost_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
         fields = "__all__"
 
+    def get_currency(self, obj) -> str:
+        return CURRENCY_CODE
+
+    def get_estimated_cost_formatted(self, obj) -> str:
+        return format_inr(obj.estimated_cost)
+
 
 class StopActivitySerializer(serializers.ModelSerializer):
     activity_detail = ActivitySerializer(source="activity", read_only=True)
     final_estimated_cost = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    final_estimated_cost_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = StopActivity
@@ -40,6 +51,12 @@ class StopActivitySerializer(serializers.ModelSerializer):
 
     def get_final_estimated_cost(self, obj) -> float:
         return float(obj.estimated_cost_override or obj.activity.estimated_cost)
+
+    def get_currency(self, obj) -> str:
+        return CURRENCY_CODE
+
+    def get_final_estimated_cost_formatted(self, obj) -> str:
+        return format_inr(obj.estimated_cost_override or obj.activity.estimated_cost)
 
     def validate(self, attrs):
         instance = self.instance
@@ -140,6 +157,8 @@ class TripSerializer(serializers.ModelSerializer):
     notes = TripNoteSerializer(many=True, read_only=True)
     duration_days = serializers.IntegerField(read_only=True)
     trip_status = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    budget_limit_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -153,6 +172,12 @@ class TripSerializer(serializers.ModelSerializer):
         if obj.end_date < today:
             return "completed"
         return "ongoing"
+
+    def get_currency(self, obj) -> str:
+        return CURRENCY_CODE
+
+    def get_budget_limit_formatted(self, obj) -> str:
+        return format_inr(obj.budget_limit)
 
     def validate(self, attrs):
         start_date = attrs.get("start_date") or getattr(self.instance, "start_date", None)

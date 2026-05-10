@@ -25,15 +25,8 @@ export default function App() {
     }
   }, []);
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch {
-      // no-op
-    }
-    localStorage.removeItem("traveloop_token");
-    localStorage.removeItem("traveloop_username");
-    setAuthToken(null);
+  const handleLogout = () => {
+    logout(); // clears localStorage + auth header
     setAuth({ token: "", username: "" });
   };
 

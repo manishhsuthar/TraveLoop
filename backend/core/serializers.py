@@ -201,7 +201,7 @@ class AIItineraryRequestSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ["phone", "city", "country", "preferences"]
+        fields = ["phone", "city", "country", "preferences", "language", "avatar_url"]
 
 
 class RegisterSerializer(serializers.ModelSerializer):

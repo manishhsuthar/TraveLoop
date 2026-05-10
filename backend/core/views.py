@@ -1,7 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, IntegerField, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncMonth
+from django.utils import timezone
+from rest_framework import filters, generics, permissions, status, views, viewsets, parsers
+from django.core.files.storage import default_storage
 from rest_framework import filters, generics, permissions, status, views, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -9,7 +12,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiExample, OpenApiTypes, extend_schema
 
 from .filters import ActivityFilter, CityFilter, TripFilter
-from .models import Activity, City, PackingItem, StopActivity, Trip, TripNote, TripStop, UserProfile
+from .models import Activity, City, PackingItem, SavedCity, StopActivity, Trip, TripNote, TripStop, UserProfile
 from .serializers import (
     AIItineraryRequestSerializer,
     ActivitySerializer,
@@ -20,10 +23,26 @@ from .serializers import (
     TripNoteSerializer,
     TripSerializer,
     TripStopSerializer,
+    TripStopSerializer,
     UserProfileSerializer,
 )
 from .services.ai_service import ItineraryGenerationService
 from .utils import CURRENCY_CODE, format_inr
+
+class UploadAPIView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request):
+        if 'file' not in request.FILES:
+            return Response({"detail": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        file = request.FILES['file']
+        file_name = default_storage.save(file.name, file)
+        file_url = request.build_absolute_uri(default_storage.url(file_name))
+        
+        return Response({"url": file_url}, status=status.HTTP_201_CREATED)
+
 
 User = get_user_model()
 
@@ -217,6 +236,55 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return profile
 
 
+class SavedCityViewSet(viewsets.ModelViewSet):
+    """CRUD for user-bookmarked cities."""
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False) or not self.request.user.is_authenticated:
+            return SavedCity.objects.none()
+        return SavedCity.objects.filter(user=self.request.user).select_related("city")
+
+    def list(self, request):
+        qs = self.get_queryset()
+        data = [
+            {
+                "id": sc.id,
+                "city_id": sc.city_id,
+                "city_name": sc.city.name,
+                "country": sc.city.country,
+                "region": sc.city.region,
+                "created_at": sc.created_at.isoformat(),
+            }
+            for sc in qs
+        ]
+        return Response(data)
+
+    def create(self, request):
+        city_id = request.data.get("city_id")
+        if not city_id:
+            return Response({"detail": "city_id required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            city = City.objects.get(id=city_id)
+        except City.DoesNotExist:
+            return Response({"detail": "City not found."}, status=status.HTTP_404_NOT_FOUND)
+        obj, created = SavedCity.objects.get_or_create(user=request.user, city=city)
+        return Response(
+            {"id": obj.id, "city_id": city.id, "city_name": city.name, "created": created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def destroy(self, request, pk=None):
+        # pk can be the SavedCity id OR a city_id — try both
+        qs = self.get_queryset()
+        obj = qs.filter(pk=pk).first() or qs.filter(city_id=pk).first()
+        if not obj:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class AIItineraryGenerateView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -291,6 +359,152 @@ class AnalyticsOverviewView(views.APIView):
                 else 0,
             }
         )
+
+
+class AdminAnalyticsView(views.APIView):
+    """Platform-wide analytics — admin only."""
+    permission_classes = [permissions.IsAdminUser]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        now = timezone.now()
+        twelve_months_ago = now - timezone.timedelta(days=365)
+
+        # --- Platform totals ---
+        total_users = User.objects.count()
+        total_trips = Trip.objects.count()
+        total_cities_used = TripStop.objects.values("city").distinct().count()
+        total_activities_planned = StopActivity.objects.count()
+
+        # --- User growth (last 12 months) ---
+        user_growth = list(
+            User.objects.filter(date_joined__gte=twelve_months_ago)
+            .annotate(month=TruncMonth("date_joined"))
+            .values("month")
+            .annotate(count=Count("id"))
+            .order_by("month")
+        )
+        user_growth_serialized = [
+            {"month": row["month"].strftime("%Y-%m"), "count": row["count"]}
+            for row in user_growth
+        ]
+
+        # --- Trip trends (last 12 months) ---
+        trip_trends = list(
+            Trip.objects.filter(created_at__gte=twelve_months_ago)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(count=Count("id"))
+            .order_by("month")
+        )
+        trip_trends_serialized = [
+            {"month": row["month"].strftime("%Y-%m"), "count": row["count"]}
+            for row in trip_trends
+        ]
+
+        # --- Top cities (across ALL users) ---
+        top_cities = list(
+            TripStop.objects.values("city__name", "city__country")
+            .annotate(visits=Count("id"))
+            .order_by("-visits")[:10]
+        )
+
+        # --- Activity distribution (across ALL users) ---
+        activity_distribution = list(
+            StopActivity.objects.values("activity__activity_type")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        # --- User engagement (top 10 users by trip count) ---
+        user_engagement = list(
+            User.objects.annotate(trip_count=Count("trips"))
+            .order_by("-trip_count")
+            .values("id", "username", "email", "trip_count")[:10]
+        )
+
+        # --- Trip visibility breakdown ---
+        visibility_breakdown = list(
+            Trip.objects.values("visibility")
+            .annotate(count=Count("id"))
+            .order_by("visibility")
+        )
+
+        # --- Recent trips (10 most recent, with user) ---
+        recent_trips = list(
+            Trip.objects.select_related("user")
+            .order_by("-created_at")[:10]
+            .values(
+                "id", "name", "start_date", "end_date",
+                "visibility", "budget_limit", "created_at",
+                "user__username", "user__email",
+            )
+        )
+        for t in recent_trips:
+            t["created_at"] = t["created_at"].isoformat() if t.get("created_at") else None
+            t["start_date"] = t["start_date"].isoformat() if t.get("start_date") else None
+            t["end_date"] = t["end_date"].isoformat() if t.get("end_date") else None
+            t["budget_limit"] = float(t["budget_limit"]) if t.get("budget_limit") else 0
+
+        # --- Recent users (10 newest) ---
+        recent_users = list(
+            User.objects.order_by("-date_joined")[:10]
+            .values("id", "username", "email", "date_joined", "is_active", "is_staff", "last_login")
+        )
+        for u in recent_users:
+            u["date_joined"] = u["date_joined"].isoformat() if u.get("date_joined") else None
+            u["last_login"] = u["last_login"].isoformat() if u.get("last_login") else None
+
+        # --- All users (for user management table) ---
+        all_users = list(
+            User.objects.annotate(trip_count=Count("trips"))
+            .order_by("-date_joined")
+            .values("id", "username", "email", "date_joined", "last_login",
+                    "is_active", "is_staff", "trip_count")
+        )
+        for u in all_users:
+            u["date_joined"] = u["date_joined"].isoformat() if u.get("date_joined") else None
+            u["last_login"] = u["last_login"].isoformat() if u.get("last_login") else None
+
+        return Response({
+            "total_users": total_users,
+            "total_trips": total_trips,
+            "total_cities_used": total_cities_used,
+            "total_activities_planned": total_activities_planned,
+            "user_growth": user_growth_serialized,
+            "trip_trends": trip_trends_serialized,
+            "top_cities": top_cities,
+            "activity_distribution": activity_distribution,
+            "user_engagement": user_engagement,
+            "visibility_breakdown": visibility_breakdown,
+            "recent_trips": recent_trips,
+            "recent_users": recent_users,
+            "all_users": all_users,
+        })
+
+
+class AdminUserManageView(views.APIView):
+    """Toggle user active / staff status — admin only."""
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, user_id):
+        try:
+            target = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if "is_active" in request.data:
+            target.is_active = bool(request.data["is_active"])
+        if "is_staff" in request.data:
+            target.is_staff = bool(request.data["is_staff"])
+        target.save(update_fields=["is_active", "is_staff"])
+
+        return Response({
+            "id": target.id,
+            "username": target.username,
+            "is_active": target.is_active,
+            "is_staff": target.is_staff,
+        })
 
 
 # ─── Public Trip ──────────────────────────────────────────

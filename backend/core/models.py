@@ -131,6 +131,26 @@ class UserProfile(models.Model):
     city = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, blank=True)
     preferences = models.TextField(blank=True)
+    language = models.CharField(max_length=50, blank=True, default="")
+    avatar_url = models.TextField(blank=True, default="")
 
     def __str__(self):
         return f"Profile: {self.user.username}"
+
+
+class SavedCity(models.Model):
+    """Bookmarked / saved cities per user."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_cities",
+    )
+    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="saved_by")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "city")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} → {self.city.name}"

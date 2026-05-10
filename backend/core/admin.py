@@ -4,6 +4,7 @@ from .models import (
     Activity,
     City,
     PackingItem,
+    SavedCity,
     StopActivity,
     Trip,
     TripNote,
@@ -19,3 +20,4 @@ admin.site.register(StopActivity)
 admin.site.register(PackingItem)
 admin.site.register(TripNote)
 admin.site.register(UserProfile)
+admin.site.register(SavedCity)

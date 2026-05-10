@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from core.models import Activity, City, Trip, TripStop
+from core.models import Activity, City, Trip, TripStop, UserProfile
 
 
 class Command(BaseCommand):
@@ -18,6 +18,17 @@ class Command(BaseCommand):
         if not user.has_usable_password():
             user.set_password("demo12345")
             user.save()
+
+        # Ensure profile exists for demo user
+        UserProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                "phone": "",
+                "city": "Paris",
+                "country": "France",
+                "preferences": "culture, food",
+            },
+        )
 
         paris, _ = City.objects.get_or_create(
             name="Paris",

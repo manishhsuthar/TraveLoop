@@ -50,6 +50,8 @@ class Trip(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trips")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    destination = models.CharField(max_length=200, blank=True, default="")
+    preferences = models.TextField(blank=True, default="")
     start_date = models.DateField()
     end_date = models.DateField()
     budget_limit = models.DecimalField(max_digits=12, decimal_places=2, default=0)

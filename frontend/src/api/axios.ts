@@ -43,7 +43,8 @@ async function refreshAccessToken() {
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  if (!headers.has("Content-Type") && options.body) headers.set("Content-Type", "application/json");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!headers.has("Content-Type") && options.body && !isFormData) headers.set("Content-Type", "application/json");
 
   const access = tokenStorage.getAccess();
   if (!options.skipAuth && access) headers.set("Authorization", `Bearer ${access}`);

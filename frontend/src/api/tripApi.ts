@@ -19,6 +19,8 @@ export async function createTripApi(input: {
   endDate: string;
   budget: number;
   privacy: Visibility;
+  destination: string;
+  preferences: string;
   cover?: string;
 }): Promise<Trip> {
   const trip = await apiFetch<BackendTrip>("/trips/", {
@@ -31,6 +33,8 @@ export async function createTripApi(input: {
       budget_limit: input.budget,
       visibility: input.privacy,
       cover_photo_url: input.cover ?? "",
+      destination: input.destination,
+      preferences: input.preferences,
     }),
   });
   return mapTrip(trip);
@@ -45,6 +49,8 @@ export async function updateTripApi(id: string, patch: Partial<Trip>): Promise<T
   if (patch.budget !== undefined) body.budget_limit = patch.budget;
   if (patch.privacy !== undefined) body.visibility = patch.privacy;
   if (patch.cover !== undefined) body.cover_photo_url = patch.cover;
+  if (patch.destination !== undefined) body.destination = patch.destination;
+  if (patch.preferences !== undefined) body.preferences = patch.preferences;
 
   const trip = await apiFetch<BackendTrip>(`/trips/${id}/`, {
     method: "PATCH",
@@ -143,6 +149,18 @@ export async function getTripBudget(id: string) {
 export async function getPublicTrip(id: string) {
   const trip = await apiFetch<BackendTrip>(`/public/trips/${id}/`, { skipAuth: true });
   return mapTrip(trip);
+}
+
+export async function uploadTripCoverApi(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await apiFetch<{ url: string }>("/upload/", {
+    method: "POST",
+    body: formData,
+    headers: {},
+  });
+  return response.url;
 }
 
 export async function copyPublicTrip(id: string) {

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useTrips } from "@/store/trips";
-import { format } from "date-fns";
+import { formatDisplayDate } from "@/lib/date";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/journal")({
@@ -73,7 +73,7 @@ function JournalPage() {
           <article key={note.id} className="rounded-2xl border bg-card p-5 soft-shadow">
             <div className="flex items-start gap-3">
               <div className="flex-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{format(new Date(note.date), "MMM d, yyyy")}</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{formatDisplayDate(note.date)}</p>
                 <h3 className="mt-1 font-serif text-2xl">{note.title}</h3>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{note.body}</p>
               </div>

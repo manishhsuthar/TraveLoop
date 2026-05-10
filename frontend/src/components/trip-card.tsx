@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { CalendarDays, MapPin, Globe2, Lock } from "lucide-react";
 import type { Trip } from "@/api/types";
-import { format } from "date-fns";
+import { formatDisplayDate } from "@/lib/date";
 
 export function TripCard({ trip, index = 0 }: { trip: Trip; index?: number }) {
   return (
@@ -39,7 +39,7 @@ export function TripCard({ trip, index = 0 }: { trip: Trip; index?: number }) {
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5" />
-              {format(new Date(trip.startDate), "MMM d")} – {format(new Date(trip.endDate), "MMM d")}
+              {formatDisplayDate(trip.startDate)} – {formatDisplayDate(trip.endDate)}
             </span>
             <span className="flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5" />

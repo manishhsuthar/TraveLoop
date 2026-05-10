@@ -32,6 +32,8 @@ interface TripsState {
     cover?: string;
     privacy: Visibility;
     budget: number;
+    destination: string;
+    preferences: string;
   }) => Promise<string>;
   updateTrip: (id: string, patch: Partial<Trip>) => Promise<void>;
   deleteTrip: (id: string) => Promise<void>;

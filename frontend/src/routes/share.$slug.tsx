@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Compass, MapPin, Clock, MessageCircle, Link as LinkIcon, Copy, Users, Calendar, IndianRupee } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { format } from "date-fns";
+import { formatDisplayDate } from "@/lib/date";
 import { toast } from "sonner";
 import { copyPublicTrip, getPublicTrip } from "@/api/tripApi";
 import type { Trip } from "@/api/types";
@@ -67,7 +67,7 @@ function SharedTrip() {
           <h1 className="mt-3 font-serif text-5xl font-semibold leading-tight md:text-7xl">{trip.title}</h1>
           <p className="mt-3 max-w-2xl text-lg opacity-90">{trip.description}</p>
           <p className="mt-2 text-sm opacity-80">
-            {format(new Date(trip.startDate), "MMM d, yyyy")} — {format(new Date(trip.endDate), "MMM d, yyyy")}
+            {formatDisplayDate(trip.startDate)} — {formatDisplayDate(trip.endDate)}
           </p>
         </div>
       </section>
@@ -116,7 +116,7 @@ function SharedTrip() {
             <li key={stop.id} className="relative">
               <span className="absolute -left-[33px] top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-xs text-primary-foreground">{i + 1}</span>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                {format(new Date(stop.startDate), "MMM d")} – {format(new Date(stop.endDate), "MMM d")}
+                {formatDisplayDate(stop.startDate)} – {formatDisplayDate(stop.endDate)}
               </p>
               <h3 className="font-serif text-2xl">{stop.cityName}, {stop.country}</h3>
               {stop.stopActivities.length > 0 && (

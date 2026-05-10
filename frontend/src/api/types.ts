@@ -73,6 +73,8 @@ export interface BackendTrip {
   budget_limit_formatted?: string;
   visibility: Visibility;
   cover_photo_url?: string;
+  destination?: string;
+  preferences?: string;
   duration_days?: number;
   trip_status?: string;
   currency?: string;
@@ -122,4 +124,6 @@ export interface Trip {
   budgetFormatted?: string;
   currency: "INR";
   tripStatus?: string;
+  destination: string;
+  preferences: string;
 }

@@ -79,6 +79,8 @@ export const useAuth = create<AuthState>()(
           city: patch.city,
           country: patch.country,
           preferences: patch.preferences,
+          language: patch.language,
+          avatar_url: patch.avatar_url,
         };
         const cleanProfilePatch = Object.fromEntries(
           Object.entries(profilePatch).filter(([, value]) => value !== undefined)

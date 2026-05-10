@@ -16,6 +16,7 @@ import {
   Users, Map, Compass, Activity, TrendingUp, Eye, ShieldCheck, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatDisplayDate } from "@/lib/date";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({ meta: [{ title: "Admin Dashboard — Traveloop" }] }),
@@ -40,7 +41,7 @@ const VIS_COLORS: Record<string, string> = {
 const fade = (i: number) => ({ initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { delay: i * 0.06, duration: 0.4 } });
 const cardCls = "rounded-2xl border bg-card p-6 soft-shadow";
 const formatMonth = (m: string) => { const [, mo] = m.split("-"); const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return names[Number(mo) - 1] ?? m; };
-const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d: string | null) => (d ? formatDisplayDate(d) : "—");
 
 function Admin() {
   const [data, setData] = useState<any>(null);

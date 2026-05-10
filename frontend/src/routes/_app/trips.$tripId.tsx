@@ -15,6 +15,7 @@ import { GripVertical, Trash2, Plus, Globe2, Lock, Share2, Sparkles, Pencil, Map
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatDisplayDate, isDateWithinRange } from "@/lib/date";
 
 export const Route = createFileRoute("/_app/trips/$tripId")({
   head: () => ({ meta: [{ title: "Itinerary — Traveloop" }] }),
@@ -41,6 +42,7 @@ function TripDetail() {
   const [editing, setEditing] = useState(false);
   const [cities, setCities] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [cityId, setCityId] = useState("");
   const [stopStart, setStopStart] = useState("");
@@ -50,6 +52,7 @@ function TripDetail() {
   const [journalTitle, setJournalTitle] = useState("");
   const [journalBody, setJournalBody] = useState("");
   const [view, setView] = useState<"timeline" | "calendar" | "list">("timeline");
+  const [selectedStopId, setSelectedStopId] = useState("");
 
   useEffect(() => {
     loadTrip(tripId);
@@ -57,8 +60,60 @@ function TripDetail() {
       setCities(items);
       setCityId((current) => current || items[0]?.id || "");
     });
-    listActivities().then(setActivities);
   }, [loadTrip, tripId]);
+
+  useEffect(() => {
+    if (!trip) return;
+    if (stopStart && !isDateWithinRange(stopStart, trip.startDate, trip.endDate)) setStopStart("");
+    if (stopEnd && !isDateWithinRange(stopEnd, trip.startDate, trip.endDate)) setStopEnd("");
+  }, [trip, stopStart, stopEnd]);
+
+  useEffect(() => {
+    if (!trip || trip.stops.length === 0) {
+      setSelectedStopId("");
+      setActivities([]);
+      return;
+    }
+    setSelectedStopId((current) =>
+      trip.stops.some((stop) => stop.id === current) ? current : trip.stops[0].id,
+    );
+  }, [trip]);
+
+  useEffect(() => {
+    const stop = trip?.stops.find((s) => s.id === selectedStopId);
+    if (!stop) {
+      setActivities([]);
+      return;
+    }
+
+    let active = true;
+    setActivitiesLoading(true);
+    listActivities({ cityId: stop.cityId })
+      .then((items) => {
+        if (!active) return;
+        setActivities(items);
+      })
+      .finally(() => {
+        if (!active) return;
+        setActivitiesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [trip, selectedStopId]);
+
+  useEffect(() => {
+    if (!selectedStop || !trip) return;
+    const selectedCityId = Number(selectedStop.cityId);
+    selectedStop.stopActivities.forEach((planned) => {
+      const activityCityId = planned.activity_detail?.city;
+      if (!activityCityId || Number(activityCityId) === selectedCityId) return;
+      toggleAct(trip.id, selectedStop.id, String(planned.activity)).catch(() => {
+        // Ignore cleanup failures; backend validation still protects consistency.
+      });
+    });
+  }, [selectedStop, toggleAct, trip]);
 
   if (!trip) {
     return (
@@ -80,6 +135,10 @@ function TripDetail() {
   const handleAddStop = async () => {
     if (!stopStart || !stopEnd) return toast.error("Pick start and end dates.");
     if (!cityId) return toast.error("Pick a city.");
+    if (stopEnd < stopStart) return toast.error("Stop end date cannot be before start date.");
+    if (!isDateWithinRange(stopStart, trip.startDate, trip.endDate) || !isDateWithinRange(stopEnd, trip.startDate, trip.endDate)) {
+      return toast.error(`Stop dates must be within ${formatDisplayDate(trip.startDate)} and ${formatDisplayDate(trip.endDate)}.`);
+    }
     const c = cities.find((x) => x.id === cityId)!;
     try {
       await addStop(trip.id, {
@@ -98,6 +157,7 @@ function TripDetail() {
     }
   };
 
+  const selectedStop = trip.stops.find((s) => s.id === selectedStopId);
   const filteredActs = activities.filter(
     (a) =>
       (actCat === "All" || a.category === actCat) &&
@@ -119,7 +179,7 @@ function TripDetail() {
           </div>
           <h1 className="mt-2 font-serif text-4xl font-semibold md:text-6xl">{trip.title}</h1>
           <p className="mt-1 text-sm opacity-85">
-            {format(new Date(trip.startDate), "MMM d, yyyy")} — {format(new Date(trip.endDate), "MMM d, yyyy")}
+            {formatDisplayDate(trip.startDate)} — {formatDisplayDate(trip.endDate)}
           </p>
         </div>
       </header>
@@ -228,9 +288,12 @@ function TripDetail() {
                       ))}
                     </select>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><Label>Start</Label><Input type="date" value={stopStart} onChange={(e) => setStopStart(e.target.value)} /></div>
-                      <div><Label>End</Label><Input type="date" value={stopEnd} onChange={(e) => setStopEnd(e.target.value)} /></div>
+                      <div><Label>Start</Label><Input type="date" min={trip.startDate} max={trip.endDate} value={stopStart} onChange={(e) => setStopStart(e.target.value)} /></div>
+                      <div><Label>End</Label><Input type="date" min={trip.startDate} max={trip.endDate} value={stopEnd} onChange={(e) => setStopEnd(e.target.value)} /></div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Allowed range: {formatDisplayDate(trip.startDate)} - {formatDisplayDate(trip.endDate)}
+                    </p>
                     <Button className="w-full" onClick={handleAddStop}>Add</Button>
                   </div>
                 </DialogContent>
@@ -266,7 +329,7 @@ function TripDetail() {
                                     <span className="text-xs text-muted-foreground">{stop.country}</span>
                                   </div>
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {format(new Date(stop.startDate), "MMM d")} – {format(new Date(stop.endDate), "MMM d")}
+                                    {formatDisplayDate(stop.startDate)} – {formatDisplayDate(stop.endDate)}
                                   </p>
                                   {stop.activityIds.length > 0 && (
                                     <ul className="mt-3 space-y-1.5 text-sm">
@@ -316,7 +379,7 @@ function TripDetail() {
                       <tr key={stop.id} className="border-t">
                         <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
                         <td className="px-4 py-3"><span className="font-serif text-lg">{stop.cityName}</span><span className="ml-2 text-xs text-muted-foreground">{stop.country}</span></td>
-                        <td className="px-4 py-3 text-muted-foreground">{format(new Date(stop.startDate), "MMM d")} – {format(new Date(stop.endDate), "MMM d")}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{formatDisplayDate(stop.startDate)} – {formatDisplayDate(stop.endDate)}</td>
                         <td className="px-4 py-3 text-muted-foreground">{stop.activityIds.length}</td>
                         <td className="px-4 py-3 text-right"><Button variant="ghost" size="icon" onClick={() => removeStop(trip.id, stop.id)}><Trash2 className="h-4 w-4" /></Button></td>
                       </tr>
@@ -339,7 +402,7 @@ function TripDetail() {
                       <div className="bg-primary/10 p-4">
                         <p className="text-xs uppercase tracking-[0.2em] text-primary">Day {idx + 1} • {days}d</p>
                         <h4 className="mt-1 font-serif text-2xl">{stop.cityName}</h4>
-                        <p className="text-xs text-muted-foreground">{format(new Date(stop.startDate), "MMM d, yyyy")}</p>
+                        <p className="text-xs text-muted-foreground">{formatDisplayDate(stop.startDate)}</p>
                       </div>
                       <div className="grid grid-cols-7 gap-1 p-3 text-center text-[10px]">
                         {Array.from({ length: days }).map((_, i) => (
@@ -360,6 +423,22 @@ function TripDetail() {
           </TabsContent>
 
           <TabsContent value="activities" className="space-y-4">
+            {trip.stops.length > 0 && (
+              <div className="max-w-sm space-y-2">
+                <Label>Stop city</Label>
+                <select
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  value={selectedStopId}
+                  onChange={(e) => setSelectedStopId(e.target.value)}
+                >
+                  {trip.stops.map((stop) => (
+                    <option key={stop.id} value={stop.id}>
+                      {stop.cityName}, {stop.country}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Input
                 value={actSearch}
@@ -384,6 +463,14 @@ function TripDetail() {
               <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
                 Add a stop first to attach activities.
               </div>
+            ) : activitiesLoading ? (
+              <div className="rounded-2xl border p-10 text-center text-muted-foreground">
+                Loading activities for {selectedStop?.cityName ?? "selected city"}...
+              </div>
+            ) : filteredActs.length === 0 ? (
+              <div className="rounded-2xl border p-10 text-center text-muted-foreground">
+                No activities found for {selectedStop?.cityName ?? "this city"}.
+              </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {filteredActs.map((a) => (
@@ -395,21 +482,22 @@ function TripDetail() {
                         <p className="text-xs text-muted-foreground">{a.city} • {a.duration} • {a.costFormatted ?? inr(a.cost)}</p>
                       </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {trip.stops.map((s) => {
-                        const on = s.activityIds.includes(a.id);
-                        return (
-                          <Button
-                            key={s.id}
-                            size="sm"
-                            variant={on ? "default" : "outline"}
-                            onClick={() => toggleAct(trip.id, s.id, a.id).catch((error) => toast.error(error instanceof Error ? error.message : "Could not update activity"))}
-                          >
-                            {on ? "✓ " : "+ "}{s.cityName}
-                          </Button>
-                        );
-                      })}
-                    </div>
+                    {selectedStop && (
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        <Button
+                          size="sm"
+                          variant={selectedStop.activityIds.includes(a.id) ? "default" : "outline"}
+                          onClick={() =>
+                            toggleAct(trip.id, selectedStop.id, a.id).catch((error) =>
+                              toast.error(error instanceof Error ? error.message : "Could not update activity"),
+                            )
+                          }
+                        >
+                          {selectedStop.activityIds.includes(a.id) ? "✓ " : "+ "}
+                          {selectedStop.cityName}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -442,7 +530,7 @@ function TripDetail() {
                 <article key={j.id} className="rounded-2xl border bg-card p-5 soft-shadow">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{format(new Date(j.date), "EEEE, MMM d")}</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{formatDisplayDate(j.date)}</p>
                       <h4 className="mt-1 font-serif text-2xl">{j.title}</h4>
                       <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{j.body}</p>
                     </div>

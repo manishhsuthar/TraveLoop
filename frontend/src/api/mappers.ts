@@ -21,6 +21,8 @@ export function mapTrip(trip: BackendTrip): Trip {
     budgetFormatted: trip.budget_limit_formatted ?? inr(trip.budget_limit),
     currency: "INR",
     tripStatus: trip.trip_status,
+    destination: trip.destination ?? "",
+    preferences: trip.preferences ?? "",
     stops: (trip.stops ?? []).map((stop) => ({
       id: String(stop.id),
       cityId: String(stop.city),

@@ -1,4 +1,6 @@
 from django.contrib.auth import get_user_model
+import os
+import uuid
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, IntegerField, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
@@ -36,11 +38,21 @@ class UploadAPIView(views.APIView):
     def post(self, request):
         if 'file' not in request.FILES:
             return Response({"detail": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         file = request.FILES['file']
-        file_name = default_storage.save(file.name, file)
+        allowed_types = {"image/jpeg", "image/png", "image/webp"}
+        if file.content_type not in allowed_types:
+            return Response({"detail": "Only JPG, PNG or WEBP files are allowed."}, status=status.HTTP_400_BAD_REQUEST)
+        if file.size > 5 * 1024 * 1024:
+            return Response({"detail": "File must be under 5MB."}, status=status.HTTP_400_BAD_REQUEST)
+
+        ext = os.path.splitext(file.name)[1].lower() or ".jpg"
+        file_name = default_storage.save(
+            f"trip-covers/{request.user.id}/{uuid.uuid4().hex}{ext}",
+            file,
+        )
         file_url = request.build_absolute_uri(default_storage.url(file_name))
-        
+
         return Response({"url": file_url}, status=status.HTTP_201_CREATED)
 
 
@@ -549,6 +561,8 @@ def copy_public_trip_view(request, trip_id):
             user=request.user,
             name=f"Copy of {source_trip.name}",
             description=source_trip.description,
+            destination=source_trip.destination,
+            preferences=source_trip.preferences,
             start_date=source_trip.start_date,
             end_date=source_trip.end_date,
             budget_limit=source_trip.budget_limit,

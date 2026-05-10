@@ -5,6 +5,8 @@ export interface Profile {
   city: string;
   country: string;
   preferences: string;
+  language: string;
+  avatar_url: string;
 }
 
 export async function getProfile() {

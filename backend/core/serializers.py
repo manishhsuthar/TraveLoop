@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -184,6 +185,14 @@ class TripSerializer(serializers.ModelSerializer):
         end_date = attrs.get("end_date") or getattr(self.instance, "end_date", None)
         if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({"end_date": "Trip end date cannot be before start date."})
+        if self.instance and start_date and end_date:
+            invalid_stop = self.instance.stops.filter(
+                Q(start_date__lt=start_date) | Q(end_date__gt=end_date)
+            ).first()
+            if invalid_stop:
+                raise serializers.ValidationError(
+                    {"start_date": "Trip dates cannot exclude existing stop dates. Update or remove out-of-range stops first."}
+                )
         return attrs
 
 

@@ -30,11 +30,12 @@ class ItineraryGenerationService:
         budget = Decimal(budget)
         per_day_budget = budget / Decimal(number_of_days)
         interests = interests or ["sightseeing"]
-        normalized_destination = destination.lower()
-        city, default_plan = self._resolve_destination(destination, normalized_destination)
+        cities = self._extract_cities(destination)
+        city_plans = [self._resolve_destination(city, city.lower()) for city in cities]
 
         days = []
         for index in range(1, number_of_days + 1):
+            city, default_plan = city_plans[(index - 1) % len(city_plans)]
             focus = interests[(index - 1) % len(interests)]
             morning, afternoon, evening = self._activities_for_day(default_plan, focus)
             days.append(
@@ -73,7 +74,7 @@ class ItineraryGenerationService:
 
         return {
             "destination": destination,
-            "primary_city": city,
+            "primary_city": city_plans[0][0],
             "currency": CURRENCY_CODE,
             "estimated_budget_inr": float(budget),
             "estimated_budget_formatted": format_inr(budget),
@@ -89,6 +90,11 @@ class ItineraryGenerationService:
             },
             "provider": "mock",
         }
+
+    def _extract_cities(self, destination):
+        normalized = destination.replace("->", ",").replace(">", ",").replace("/", ",")
+        cities = [item.strip() for item in normalized.split(",") if item.strip()]
+        return cities or [destination]
 
     def _resolve_destination(self, destination, normalized_destination):
         for keyword, plan in INDIAN_DESTINATION_STYLES.items():

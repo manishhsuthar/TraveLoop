@@ -1,15 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, MapPin, TrendingUp, IndianRupee, Plus, X, Sparkles } from "lucide-react";
+import { Search, MapPin, TrendingUp, IndianRupee, Plus, X, Sparkles, Bookmark } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listCities } from "@/api/cityApi";
+import { listSavedCitiesApi, saveCityApi, unsaveCityApi, type SavedCity } from "@/api/savedCityApi";
 import { inr } from "@/api/mappers";
 import { useTrips } from "@/store/trips";
+import { useAuth } from "@/store/auth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/discover")({
@@ -18,16 +20,30 @@ export const Route = createFileRoute("/_app/discover")({
 });
 
 function DiscoverPage() {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("city") ?? "";
+  });
   const [region, setRegion] = useState("All");
   const [selected, setSelected] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [savedLoading, setSavedLoading] = useState(true);
   const [cities, setCities] = useState<any[]>([]);
+  const [savedCities, setSavedCities] = useState<SavedCity[]>([]);
   const trips = useTrips((s) => s.trips);
   const loadTrips = useTrips((s) => s.loadTrips);
   const addStop = useTrips((s) => s.addStop);
+  const user = useAuth((s) => s.user);
 
   useEffect(() => { loadTrips(); }, [loadTrips]);
+  useEffect(() => {
+    if (!user) return;
+    setSavedLoading(true);
+    listSavedCitiesApi()
+      .then(setSavedCities)
+      .finally(() => setSavedLoading(false));
+  }, [user]);
+
   useEffect(() => {
     setLoading(true);
     listCities(q).then(setCities).finally(() => setLoading(false));
@@ -35,6 +51,48 @@ function DiscoverPage() {
 
   const regions = useMemo(() => ["All", ...Array.from(new Set(cities.map((c) => c.region).filter(Boolean)))], [cities]);
   const filtered = region === "All" ? cities : cities.filter((c) => c.region === region);
+  const savedCityMap = useMemo(
+    () => new Map(savedCities.map((saved) => [String(saved.city_id), saved])),
+    [savedCities],
+  );
+
+  const toggleSavedCity = async (city: any) => {
+    if (!user) {
+      toast.error("Please sign in to save destinations.");
+      return;
+    }
+
+    const existing = savedCityMap.get(String(city.id));
+
+    if (existing) {
+      setSavedCities((prev) => prev.filter((item) => item.city_id !== Number(city.id)));
+      try {
+        await unsaveCityApi(String(existing.id));
+      } catch (error) {
+        setSavedCities((prev) => [existing, ...prev]);
+        toast.error(error instanceof Error ? error.message : "Could not remove bookmark");
+      }
+      return;
+    }
+
+    const optimistic: SavedCity = {
+      id: Date.now(),
+      city_id: Number(city.id),
+      city_name: city.name,
+      country: city.country,
+      region: city.region,
+      created_at: new Date().toISOString(),
+    };
+    setSavedCities((prev) => [optimistic, ...prev]);
+    try {
+      await saveCityApi(city.id);
+      const fresh = await listSavedCitiesApi();
+      setSavedCities(fresh);
+    } catch (error) {
+      setSavedCities((prev) => prev.filter((item) => item.id !== optimistic.id));
+      toast.error(error instanceof Error ? error.message : "Could not save bookmark");
+    }
+  };
 
   const handleAddToTrip = async (city: any, tripId: string) => {
     const start = new Date(); start.setDate(start.getDate() + 30);
@@ -103,6 +161,18 @@ function DiscoverPage() {
                   <div className="absolute left-3 top-3 flex gap-1">
                     <Badge className="bg-white/90 text-ink hover:bg-white"><TrendingUp className="mr-1 h-3 w-3" /> {c.popularity}</Badge>
                   </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleSavedCity(c);
+                    }}
+                    className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-ink hover:bg-white"
+                    aria-label={savedCityMap.has(String(c.id)) ? "Remove bookmark" : "Save destination"}
+                  >
+                    <Bookmark className={`h-4 w-4 ${savedCityMap.has(String(c.id)) ? "fill-current text-primary" : ""}`} />
+                  </button>
                   <div className="absolute bottom-3 left-4 right-4 text-primary-foreground">
                     <h3 className="font-serif text-2xl leading-tight">{c.name}</h3>
                     <p className="text-xs opacity-90"><MapPin className="mr-1 inline h-3 w-3" />{c.country}</p>
@@ -116,6 +186,19 @@ function DiscoverPage() {
             ))}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {!savedLoading && savedCities.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="font-serif text-2xl">Saved destinations</h2>
+          <div className="flex flex-wrap gap-2">
+            {savedCities.map((saved) => (
+              <Badge key={saved.id} variant="outline" className="px-3 py-1">
+                {saved.city_name}
+              </Badge>
+            ))}
+          </div>
+        </section>
       )}
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>

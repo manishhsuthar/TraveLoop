@@ -103,6 +103,8 @@ function TripDetail() {
     };
   }, [trip, selectedStopId]);
 
+  const selectedStop = trip?.stops.find((s) => s.id === selectedStopId);
+
   useEffect(() => {
     if (!selectedStop || !trip) return;
     const selectedCityId = Number(selectedStop.cityId);
@@ -156,8 +158,6 @@ function TripDetail() {
       toast.error(error instanceof Error ? error.message : "Could not add stop");
     }
   };
-
-  const selectedStop = trip.stops.find((s) => s.id === selectedStopId);
   const filteredActs = activities.filter(
     (a) =>
       (actCat === "All" || a.category === actCat) &&

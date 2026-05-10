@@ -39,6 +39,16 @@ export const createTrip = async (payload) => {
   return data;
 };
 
+export const createStop = async (payload) => {
+  const { data } = await api.post("/stops/", payload);
+  return data;
+};
+
+export const createStopActivity = async (payload) => {
+  const { data } = await api.post("/stop-activities/", payload);
+  return data;
+};
+
 export const fetchPublicTrip = async (tripId) => {
   const { data } = await api.get(`/public/trips/${tripId}/`);
   return data;
